@@ -4,6 +4,7 @@ import logging
 import os
 import requests
 import traceback
+import ast
 
 LOG = logging.getLogger('alerta.plugins.slack')
 
@@ -40,7 +41,19 @@ try:
         os.environ.get('SLACK_CHANNEL_SEVERITY_MAP'))
 except Exception as e:
     SLACK_CHANNEL_SEVERITY_MAP = app.config.get('SLACK_CHANNEL_SEVERITY_MAP', dict())
-    
+
+try:
+    SLACK_CHANNEL_MAP = json.loads(
+        os.environ.get('SLACK_CHANNEL_MAP'))
+except Exception as e:
+    SLACK_CHANNEL_MAP = app.config.get('SLACK_CHANNEL_MAP', dict())
+
+try:
+    SLACK_SEVERITY_FILTER = ast.literal_eval(
+        os.environ.get('SLACK_SEVERITY_FILTER'))
+except Exception as e:
+    SLACK_SEVERITY_FILTER = app.config.get('SLACK_SEVERITY_FILTER', list())
+
 SLACK_SEND_ON_ACK = os.environ.get(
     'SLACK_SEND_ON_ACK') or app.config.get('SLACK_SEND_ON_ACK', False)
 SLACK_SEVERITY_MAP = app.config.get('SLACK_SEVERITY_MAP', {})
@@ -91,7 +104,7 @@ class ServiceIntegration(PluginBase):
         SLACK_CHANNEL = self.get_config('SLACK_CHANNEL', default='', type=str, **kwargs)
         SLACK_SUMMARY_FMT = self.get_config('SLACK_SUMMARY_FMT', type=str, **kwargs)  # Message summary format
         SLACK_PAYLOAD = self.get_config('SLACK_PAYLOAD', type=str, **kwargs)  # Full API control
-        ICON_EMOJI = self.get_config('ICON_EMOJI', default=':rocket:', type=str, **kwargs)
+        ICON_EMOJI = self.get_config('ICON_EMOJI', type=str, **kwargs)
         ALERTA_USERNAME = self.get_config('ALERTA_USERNAME', default='alerta', type=str, **kwargs)
         DASHBOARD_URL = self.get_config('DASHBOARD_URL', default='', type=str, **kwargs)
         SLACK_TOKEN = self.get_config('SLACK_TOKEN', type=str, **kwargs)
@@ -117,6 +130,11 @@ class ServiceIntegration(PluginBase):
             LOG.debug("Found event mapping. Channel: %s" % channel)
         else:
             LOG.debug("No event mapping. Channel: %s" % channel)
+        channel = SLACK_CHANNEL_MAP.get(alert.environment, dict()).get(alert.severity, channel)
+        if SLACK_CHANNEL_MAP.get(alert.environment, dict()).get(alert.severity, channel):
+            LOG.debug("Found env-severity mapping. Channel: %s" % channel)
+        else:
+            LOG.debug("No env-severity mapping. Channel: %s" % channel)
 
         templateVars = {
             'alert': alert,
@@ -147,33 +165,26 @@ class ServiceIntegration(PluginBase):
                     short_id=alert.get_id(short=True),
                     dashboard=DASHBOARD_URL
                 )
-            if not SLACK_ATTACHMENTS:
-                payload = {
-                    "username": ALERTA_USERNAME,
-                    "channel": channel,
-                    "text": summary,
-                    "icon_emoji": ICON_EMOJI
-                }
-            else:
-                payload = {
-                    "username": ALERTA_USERNAME,
-                    "channel": channel,
-                    "icon_emoji": ICON_EMOJI,
-                    "text": summary,
-                    "attachments": [{
-                        "fallback": summary,
-                        "color": color,
-                        "fields": [
-                            {"title": "Status", "value": (status if status else alert.status).capitalize(),
-                             "short": True},
-                            {"title": "Environment",
-                                "value": alert.environment, "short": True},
-                            {"title": "Resource", "value": alert.resource, "short": True},
-                            {"title": "Services", "value": ", ".join(
-                                alert.service), "short": True}
-                        ]
-                    }]
-                }
+            payload = {}
+            payload['username'] = ALERTA_USERNAME
+            payload['channel'] = channel
+            payload['text'] = summary
+            if ICON_EMOJI:
+                payload['icon_emoji'] = ICON_EMOJI
+            if SLACK_ATTACHMENTS:
+                payload['attachments'] = [{
+                    "fallback": summary,
+                    "color": color,
+                    "fields": [
+                        {"title": "Status", "value": (status if status else alert.status).capitalize(),
+                            "short": True},
+                        {"title": "Environment",
+                            "value": alert.environment, "short": True},
+                        {"title": "Resource", "value": alert.resource, "short": True},
+                        {"title": "Services", "value": ", ".join(
+                            alert.service), "short": True}
+                    ]
+                }]
 
         return payload
 
@@ -183,9 +194,16 @@ class ServiceIntegration(PluginBase):
         if alert.repeat:
             return
 
+        if alert.severity in SLACK_SEVERITY_FILTER:
+            LOG.debug("Alert severity %s is included in SLACK_SEVERITY_FILTER list, thus it will not be forwarded to Slack." % alert.severity)
+            return
+
+        if alert.severity in ['ok', 'normal', 'cleared', app.config.get('DEFAULT_NORMAL_SEVERITY')] and alert.previous_severity in SLACK_SEVERITY_FILTER:
+            LOG.debug("Alert severity is %s but previous_severity was %s (included in SLACK_SEVERITY_FILTER list), thus it will not be forwarded to Slack." % (alert.severity, alert.previous_severity))
+            return
+
         try:
             payload = self._slack_prepare_payload(alert, **kwargs)
-
             LOG.debug('Slack payload: %s', payload)
         except Exception as e:
             LOG.error('Exception formatting payload: %s\n%s' % (e, traceback.format_exc()))

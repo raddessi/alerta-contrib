@@ -2,12 +2,13 @@ alerta-server[postgres]
 alerta-server[mongodb]
 alerta
 kombu
-
+six
 mock
 mypy
 pre-commit
+PyJWT==1.7.1
 pylint
-pytest
+pytest>=5.4.3
 pytest-cov
 python-dotenv
 requests_mock

@@ -96,9 +96,7 @@ class TelegramBot(PluginBase):
                         {'text': 'ack', 'callback_data': '/ack ' + alert.id},
                         {'text': 'close', 'callback_data': '/close ' + alert.id},
                         {'text': 'blackout',
-                         'callback_data': '/blackout %s|%s|%s' % (alert.environment,
-                                                                  alert.resource,
-                                                                  alert.event)}
+                         'callback_data': '/blackout ' + alert.id}
                     ]
                 ]
             }
@@ -114,21 +112,24 @@ class TelegramBot(PluginBase):
 
         LOG.debug('Telegram: post_receive sendMessage disable_notification=%s', str(disable_notification))
 
-        try:
-            response = self.bot.sendMessage(TELEGRAM_CHAT_ID,
-                                            text,
-                                            parse_mode='Markdown',
-                                            disable_notification=disable_notification,
-                                            reply_markup=keyboard)
-        except telepot.exception.TelegramError as e:
-            raise RuntimeError("Telegram: ERROR - %s, description= %s, json=%s",
-                               e.error_code,
-                               e.description,
-                               e.json)
-        except Exception as e:
-            raise RuntimeError("Telegram: ERROR - %s", e)
+        chat_ids = TELEGRAM_CHAT_ID.split(",")
+        for chat_id in chat_ids:
+            try:
+                response = self.bot.sendMessage(chat_id,
+                                                text,
+                                                parse_mode='Markdown',
+                                                disable_notification=disable_notification,
+                                                reply_markup=keyboard)
+            except telepot.exception.TelegramError as e:
+                raise RuntimeError("Telegram (ChatId: %s): ERROR - %s, description= %s, json=%s",
+                                chat_id,
+                                e.error_code,
+                                e.description,
+                                e.json)
+            except Exception as e:
+                raise RuntimeError("Telegram: ERROR - %s", e)
 
-        LOG.debug('Telegram: %s', response)
+            LOG.debug('Telegram (ChatId: %s):  %s', chat_id, response)
 
     def status_change(self, alert, status, summary):
         return

@@ -3,7 +3,7 @@ Mailer Integration
 
 Send emails for alerts received by Alerta.
 
-For help, join [![Gitter chat](https://badges.gitter.im/alerta/chat.png)](https://gitter.im/alerta/chat)
+For help, join [![Slack chat](https://img.shields.io/badge/chat-on%20slack-blue?logo=slack)](https://slack.alerta.dev)
 
 Overview
 --------
@@ -13,7 +13,7 @@ ensuring that alerts meet the following criteria:
 
   * must not be a duplicate alert (ie. ``repeat != True``)
   * must have status of ``open`` or ``closed``
-  * must have a current severity *OR* previous severity of ``critical`` or ``major``
+  * must have a current severity *OR* previous severity of ``critical`` or ``major`` by default
   * must not have been cleared down within 30 seconds (to prevent flapping alerts spamming)
 
 To achieve the above, alerts are actually held for a minimum of 30 seconds
@@ -41,7 +41,7 @@ settings apply to the mailer script.
 
 ```
 [alerta-mailer]
-key = demo-key
+key = demo-key  ; must have "write:heartbeats" scope
 mail_to = john.doe@gmail.com,jane.doe@gmail.com
 mail_from = your.email@gmail.com
 amqp_url = redis://localhost:6379/
